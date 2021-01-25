@@ -1,0 +1,224 @@
+import requests
+import pandas as pd
+import numpy as np
+import sys
+import locale
+from datetime import datetime
+import io
+import calendar
+import time
+import sys
+import xml.etree.ElementTree as ET
+from xml.etree.ElementTree import XML, fromstring
+import shutil  
+#import datetime
+from datetime import date
+from datetime import datetime
+
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+pd.options.display.max_columns = None
+pd.options.mode.chained_assignment = None 
+
+def process(ADUser,ADPasswd,WDUser,WDPassword,Link):
+    #print(ADUser," ",ADPasswd," ",WDUser," ",WDPassword," ",Link)
+    #print("Argument1: ",arg1)
+    #FYmonth=2
+    #FYear=2020
+    #arg1=""
+
+    url=Link
+   
+    Req= requests.Session().get(url=(url), auth=(WDUser,WDPassword))
+    data=Req.content.decode('utf-8').encode('cp850','replace').decode('cp850')
+
+    #print("Response: ",Req)
+    #print(data)
+    #print("data: ",data)
+    #print(data)
+    dataio = io.StringIO(data)
+    #print(dataio)
+
+    #Actcsv=pd.DataFrame(req)
+
+    datacsv = pd.read_csv(dataio, sep=",")
+
+    f=open("Actuals CSV.txt","w+")
+    f.write(data)
+
+    #print(datacsv)
+    df=pd.DataFrame(datacsv)
+    df=df.replace("|","")
+
+    #print(df)
+    df['Acct_Combo']=0
+    df['Acct_Total']=0
+    df['Level']=0
+    
+
+    df2=pd.DataFrame(["Acct_Combo","Level","Supplier","Project","Acct_Total"])
+
+    def Acct_Amt(df):
+        df.fillna(value="",inplace=True)
+        df2=pd.DataFrame()
+        cols=[]
+
+        for x in df.columns:
+            cols.append(x)
+
+        for index,row in df.iterrows():
+        
+            # You will need to figure out what the req'd iputs are for your adaptive upload and base your actuals report from workday on those inputs
+
+            Ledger=row[3]
+            Revenue_Cat=row[4]
+            Spend_Cat=row[5]
+            Credit=float(row[12])
+            Debit=float(row[11])
+            Acct_Date=row[13]
+            Ledger_num=Ledger[:1]
+            Ledger_4=Ledger[:4]
+            Date=datetime.strptime(Acct_Date, "%Y-%m-%d")      
+            Project=row[15]
+            Month=str(Date.month)
+            Year=str(Date.year)
+            Bus_unit=str(row[0])    
+            Supplier=row[9]
+            df.loc[index,"Supplier"]=Supplier
+
+            if  pd.notna(Ledger):    
+
+                if len(Month)==1:
+                    Month="0"+Month
+                    Yr_Month=Month+"/"+Year
+                else:
+                    Yr_Month=Month+"/"+Year
+
+                if Ledger_num=="4":
+
+                    df.loc[index,"Acct_Combo"]=str(Ledger_4)+"-"+str(Revenue_Cat)
+
+                    if Revenue_Cat!="":                    
+                        df.loc[index,"Acct_Combo"]=str(Ledger_4)+"-"+str(Revenue_Cat)
+
+                    else: 
+                        df.loc[index,"Acct_Combo"]=str(Ledger)
+
+                    Total=Credit-Debit 
+                    CC=str(row[1])
+                    df.loc[index,"Level"]=Bus_unit+"-"+CC
+                    df.loc[index,"Project"]=Project
+                    df.loc[index,"Supplier"]=Supplier
+                    if Yr_Month in cols:
+                        pass
+                    else:
+                        df.loc[index,Yr_Month]=Total
+                else:
+                    if Spend_Cat!="":                    
+                        df.loc[index,"Acct_Combo"]=str(Ledger_4)+"-"+str(Spend_Cat)
+                    else: 
+                        df.loc[index,"Acct_Combo"]=str(Ledger_4)
+
+                    Total=Debit-Credit
+                    Bus_unit=str(row[0])
+                    CC=str(row[1])
+                    CC=CC.replace("&","&amp;")
+                    df.loc[index,"Level"]=Bus_unit+"-"+CC
+                    df.loc[index,Project]=Project
+                    df.loc[index,"Supplier"]=Supplier
+
+                    if Yr_Month in cols:
+                        pass
+                    else:
+                        df.loc[index,Yr_Month]=Total
+            else: break
+        time.sleep(20)
+        df.head()
+        #print(df)
+        df2["Account"] =df['Acct_Combo']
+        df2["Level"]=df['Level']
+        df2["Project"]=df['Project']
+        df2["Supplier"]=df["Supplier"]
+        df2[Yr_Month]=df[Yr_Month]
+        df2 = df2.fillna('')
+
+        #df2=df2.replace("&","&amp;")
+        return df2
+
+    df3=pd.DataFrame(Acct_Amt(df))
+
+    col_name=df3.columns
+    Main_parts=""
+
+    Start ="""<?xml version="1.0" encoding="UTF-8"?>
+    <call method="importStandardData" callerName="Actuals Import">
+    <credentials login="{0}" password="{1}" instanceCode="CITYYEAR4"/>
+    <importDataOptions planOrActuals="Actuals" allowParallel="false" replaceExisting="true" useMappings="true"/>
+    <version name="Actuals" /><rowData><header>Account|Level|Split Label|Projects|Supplier|{2}</header><rows>""".format(ADUser,ADPasswd,col_name[-1])
+
+    End="""</rows></rowData></call>"""
+
+    for index,x in df3.iterrows():    
+        Total=np.round(float(x[4]),2)
+        x[0]=x[0].replace(" & "," &amp; ")
+        x[1]=x[1].replace(" & "," &amp; ")
+        x[3]=x[3].replace("&","&amp;")
+        x[3]=x[3].replace("|","")
+
+        Main="""<row>{0}|{1}||{2}|{3}|{4:.2f}</row>""".format(x[0],x[1],x[2],x[3],Total)
+        Main_parts+=Main
+
+    Pre_xml=Start+Main_parts+End
+    xml=Pre_xml.strip()
+
+    f=open("XML.txt","w+")
+    f.write(xml)
+
+    Upload=xml.encode(encoding='UTF-8',errors='strict')
+
+    #xml=open("XML.xml","r")
+
+    def Aggr(xml):
+        headers = {'Content-Type': 'application/xml'}
+        req=requests.post('https://api.adaptiveinsights.com/api/v25',Upload,headers=headers)
+        return req.text
+
+    var=Aggr(xml)
+
+    today = date.today()
+    d1 = today.strftime("%Y-%m-%d")
+
+    name="Actuals "+"As of "+str(d1)+".txt"
+
+    df3.to_csv(name)
+
+    #var.to_csv(Dt+" Actuals")
+
+    f=open("Actuals report.txt","w+")
+    f.write(var)
+
+    print(var)
+    #print("Actuals Import Completed")
+    #print("For Details on result including Missing Ledger Account. \n Please review Actuals report.txt located in CYIO install folder")
+    
+    return var
+
+
+#This code can also be used to upload multple months by populating the list variable WorkdayLst with your Workday monthy code and replacing the month variable in the link 
+with x for the below loop. 
+
+
+
+WorkdayLst=["Start"]
+
+
+for x in WorkdayLst:
+
+    ADUser="Username"
+    ADPasswd="password"
+    WDUser="username"
+    WDPassword="password"
+    
+    Link="""WorkdayWebLink"""
+    Upload=process(ADUser,ADPasswd,WDUser,WDPassword,Link)
+    print(Upload)
+    
