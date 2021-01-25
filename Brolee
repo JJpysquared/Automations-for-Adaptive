@@ -20,12 +20,7 @@ pd.options.display.max_columns = None
 pd.options.mode.chained_assignment = None 
 
 def process(ADUser,ADPasswd,WDUser,WDPassword,Link):
-    #print(ADUser," ",ADPasswd," ",WDUser," ",WDPassword," ",Link)
-    #print("Argument1: ",arg1)
-    #FYmonth=2
-    #FYear=2020
-    #arg1=""
-
+ 
     url=Link
    
     Req= requests.Session().get(url=(url), auth=(WDUser,WDPassword))
@@ -151,7 +146,7 @@ def process(ADUser,ADPasswd,WDUser,WDPassword,Link):
 
     Start ="""<?xml version="1.0" encoding="UTF-8"?>
     <call method="importStandardData" callerName="Actuals Import">
-    <credentials login="{0}" password="{1}" instanceCode="CITYYEAR4"/>
+    <credentials login="{0}" password="{1}" instanceCode="InstanceCode"/>
     <importDataOptions planOrActuals="Actuals" allowParallel="false" replaceExisting="true" useMappings="true"/>
     <version name="Actuals" /><rowData><header>Account|Level|Split Label|Projects|Supplier|{2}</header><rows>""".format(ADUser,ADPasswd,col_name[-1])
 
