@@ -193,8 +193,7 @@ def process(ADUser,ADPasswd,WDUser,WDPassword,Link):
 
     print(var)
     #print("Actuals Import Completed")
-    #print("For Details on result including Missing Ledger Account. \n Please review Actuals report.txt located in CYIO install folder")
-    
+
     return var
 
 
